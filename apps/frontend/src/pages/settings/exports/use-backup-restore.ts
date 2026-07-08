@@ -17,6 +17,35 @@ import { QueryKeys } from "@/lib/query-keys";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@wealthfolio/ui/components/ui/use-toast";
 
+const HEALTHZ_URL = "/api/v1/healthz";
+
+/**
+ * After a web restore the server swaps the DB file and (by default) restarts to
+ * rebuild its connection pool. Wait for it to come back, then reload the app so
+ * every query refetches against the restored data.
+ */
+async function waitForServerReadyAndReload(timeoutMs = 90_000): Promise<void> {
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  // The restore response is sent before the process exits; give it a moment to
+  // begin restarting so we don't reload against the outgoing process.
+  await sleep(1500);
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(HEALTHZ_URL, { cache: "no-store" });
+      if (res.ok) {
+        window.location.reload();
+        return;
+      }
+    } catch {
+      // Server still restarting — keep polling.
+    }
+    await sleep(1500);
+  }
+  // Reload anyway so the user isn't stranded on a stale page.
+  window.location.reload();
+}
+
 export function useBackupRestore() {
   const { platform } = usePlatform();
   const queryClient = useQueryClient();
@@ -125,6 +154,25 @@ export function useBackupRestore() {
     },
   });
 
+  const { mutateAsync: restoreWebBackup, isPending: isRestoringWebBackup } = useMutation({
+    mutationFn: async (filename: string) => {
+      toast({
+        title: "Restoring backup",
+        description: "The server will restart to finish the restore — this page will reload.",
+      });
+      await restoreDatabase(filename);
+      await waitForServerReadyAndReload();
+    },
+    onError: (error) => {
+      logger.error(`Error during web restore: ${String(error)}`);
+      toast({
+        title: "Restore failed",
+        description: error instanceof Error ? error.message : "An unknown error occurred",
+        variant: "destructive",
+      });
+    },
+  });
+
   const { mutateAsync: restoreFromBackup, isPending: isRestoring } = useMutation({
     mutationFn: async () => {
       if (isWeb) {
@@ -189,13 +237,24 @@ export function useBackupRestore() {
     }
   };
 
+  // Web restore: swap the live DB from an existing server-side backup, then the
+  // server restarts and the page reloads (handled in the mutation).
+  const performWebRestore = async (filename: string) => {
+    try {
+      await restoreWebBackup(filename);
+    } catch (error) {
+      logger.error(`Web restore error: ${String(error)}`);
+    }
+  };
+
   return {
     performBackup,
     performRestore,
+    performWebRestore,
     deleteWebBackup,
     getWebBackupDownloadUrl: getDatabaseBackupDownloadUrl,
     isBackingUp,
-    isRestoring,
+    isRestoring: isRestoring || isRestoringWebBackup,
     isDeletingWebBackup,
     isLoadingWebBackups,
     isFetchingWebBackups,
@@ -205,7 +264,7 @@ export function useBackupRestore() {
         : "Unable to load database backups"
       : null,
     canBackup: platformMode !== "mobile" || platform?.os === "ios",
-    canRestore: platformMode === "desktop" || platform?.os === "ios",
+    canRestore: platformMode === "desktop" || platformMode === "web" || platform?.os === "ios",
     isIOS: platform?.os === "ios",
     isDesktop: platformMode === "desktop",
     isMobile: platformMode === "mobile",

@@ -85,7 +85,7 @@ easy-to-use tool to track their investments and goals.
 - [ ] Create and manage multiple portfolios
 - [ ] Portfolio Allocation and Rebalancing
 - [ ] Android Mobile app
-- [ ] SSO in self-hosted version
+- [x] SSO in self-hosted version (OIDC/OpenID Connect)
 
 ### Always Doing
 

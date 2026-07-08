@@ -469,7 +469,7 @@ export {
   updateAddon,
 } from "./addons";
 
-// FIRE Planner (desktop-only — stubs throw at runtime)
+// FIRE Planner (implemented via REST — POST /goals/retirement/*)
 export {
   calculateRetirementProjection,
   runRetirementDecisionSensitivityMap,
@@ -479,7 +479,7 @@ export {
   runRetirementStressTests,
 } from "./fire-planner";
 
-// Crypto Commands (web stubs - not available in web mode)
+// Crypto Commands (implemented via REST — POST /sync/crypto/*)
 export {
   syncComputeSas,
   syncComputeSharedSecret,

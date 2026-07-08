@@ -19,6 +19,7 @@ use axum::{
 };
 use futures::stream;
 use tokio::{fs, io::AsyncReadExt, task};
+use tower_governor::{governor::GovernorConfigBuilder, GovernorLayer};
 use wealthfolio_storage_sqlite::{db, is_valid_backup_filename};
 
 #[derive(serde::Serialize)]
@@ -197,7 +198,91 @@ async fn delete_backup_file_route(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RestoreDatabaseBody {
+    filename: String,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RestoreDatabaseResponse {
+    restored_from: String,
+    safety_backup: String,
+    restarting: bool,
+}
+
+/// Whether a successful restore should exit the process so the supervisor (e.g.
+/// Docker `restart: unless-stopped`) relaunches with the restored database.
+/// Defaults to true; bare-metal operators set `WF_RESTART_ON_RESTORE=false` and
+/// restart manually.
+fn restart_on_restore_enabled() -> bool {
+    std::env::var("WF_RESTART_ON_RESTORE")
+        .map(|v| !v.eq_ignore_ascii_case("false"))
+        .unwrap_or(true)
+}
+
+/// Restore the live database from one of the server-side backups.
+///
+/// The connection pool holds `app.db` open, so the file is swapped via
+/// `restore_database_safe` (WAL checkpoint + cross-platform file replace) and
+/// the process is restarted afterwards to rebuild the pool. A pre-restore safety
+/// backup is taken first so a bad restore is recoverable.
+async fn restore_database_route(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<RestoreDatabaseBody>,
+) -> ApiResult<Json<RestoreDatabaseResponse>> {
+    // Validate + resolve the requested backup (traversal-safe, must live in the
+    // backups dir).
+    let backup_path = resolve_backup_path(&state.data_root, &body.filename).await?;
+    let data_root = state.data_root.clone();
+
+    let safety_backup = task::spawn_blocking(move || -> ApiResult<String> {
+        let backup_str = backup_path
+            .to_str()
+            .ok_or_else(|| ApiError::Internal("Backup path is not valid UTF-8".to_string()))?;
+        // Pre-restore safety copy so the operator can roll back a bad restore.
+        let safety = db::backup_database(&data_root)
+            .map_err(|e| ApiError::Internal(format!("Failed to create pre-restore backup: {e}")))?;
+        // Swap the live database file.
+        db::restore_database_safe(&data_root, backup_str)
+            .map_err(|e| ApiError::Internal(format!("Failed to restore database: {e}")))?;
+        Ok(StdPath::new(&safety)
+            .file_name()
+            .and_then(|f| f.to_str())
+            .unwrap_or_default()
+            .to_string())
+    })
+    .await
+    .map_err(|e| anyhow::anyhow!("Failed to execute restore task: {}", e))??;
+
+    let restarting = restart_on_restore_enabled();
+    if restarting {
+        // Respond first, then exit so the client sees success before the socket
+        // drops. The supervisor relaunches the server with the restored DB.
+        tokio::spawn(async {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            tracing::warn!("Restarting server to complete database restore");
+            std::process::exit(0);
+        });
+    }
+
+    Ok(Json(RestoreDatabaseResponse {
+        restored_from: body.filename,
+        safety_backup,
+        restarting,
+    }))
+}
+
 pub fn router() -> Router<Arc<AppState>> {
+    // Rate-limit the one destructive, restart-triggering endpoint: 3 restores
+    // per minute per peer IP (replenish 1 token every 20s).
+    let restore_governor = GovernorConfigBuilder::default()
+        .per_second(20)
+        .burst_size(3)
+        .finish()
+        .expect("valid governor config");
+
     Router::new()
         .route("/utilities/database/backup", post(backup_database_route))
         .route("/utilities/database/backups", get(list_backup_files_route))
@@ -208,6 +293,10 @@ pub fn router() -> Router<Arc<AppState>> {
         .route(
             "/utilities/database/backups/{filename}",
             delete(delete_backup_file_route),
+        )
+        .route(
+            "/utilities/database/restore",
+            post(restore_database_route).layer(GovernorLayer::new(restore_governor)),
         )
 }
 

@@ -210,7 +210,9 @@ struct RatingsQuery {
 }
 
 async fn get_addon_ratings_web(_q: Query<RatingsQuery>) -> ApiResult<Json<Vec<serde_json::Value>>> {
-    // Store ratings retrieval API not implemented yet; return empty list to avoid UI errors
+    // Ratings are a property of the remote addon store, not local self-host state,
+    // and the addon service exposes no ratings-fetch method (only `submit_rating`).
+    // Intentionally deferred: return an empty list so the UI renders cleanly.
     Ok(Json(Vec::new()))
 }
 

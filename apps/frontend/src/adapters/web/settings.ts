@@ -1,5 +1,6 @@
 // Web adapter - Settings, App Info, Updater Commands
 
+import { notifyUnauthorized } from "@/lib/auth-token";
 import { API_PREFIX, invoke, logger } from "./core";
 import type { Settings, UpdateInfo } from "@/lib/types";
 import type { AppInfo, PlatformInfo } from "../types";
@@ -82,10 +83,36 @@ export interface PendingExport {
 export const backupDatabaseToPendingExport = (): Promise<PendingExport> =>
   Promise.reject(new Error("Pending backup exports are only supported in the Tauri app"));
 
-export const restoreDatabase = (_backupFilePath: string): Promise<void> =>
-  Promise.reject(
-    new Error("Restore in web mode requires stopping Wealthfolio and replacing app.db"),
-  );
+/**
+ * Restore the database from an existing server-side backup (by filename).
+ *
+ * The server swaps the live DB file and, by default, restarts the process
+ * (WF_RESTART_ON_RESTORE) to rebuild its connection pool. The caller should
+ * wait for the server to come back (poll /healthz) and then reload.
+ */
+export const restoreDatabase = async (backupFilename: string): Promise<void> => {
+  const res = await fetch(`${API_PREFIX}/utilities/database/restore`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ filename: backupFilename }),
+    credentials: "same-origin",
+  });
+
+  if (res.status === 401) {
+    notifyUnauthorized();
+  }
+
+  if (!res.ok) {
+    let message = res.statusText;
+    try {
+      const err = (await res.json()) as { message?: string; error?: string };
+      message = err?.message ?? err?.error ?? message;
+    } catch {
+      // Keep the HTTP status text when the server did not return JSON.
+    }
+    throw new Error(message);
+  }
+};
 
 // ============================================================================
 // App Commands

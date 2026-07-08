@@ -579,6 +579,22 @@ The container supports all `WF_*` environment variables documented in the
   - Database: `/data/wealthfolio.db`
   - Secrets: `/data/secrets.json` (encrypted with `WF_SECRET_KEY`)
 
+### Backups
+
+A complete backup is **three things**, not just the database:
+
+1. The database (`wealthfolio.db`) — holds accounts, activities, holdings, etc.
+2. `secrets.json` — holds stored API keys, broker/Connect tokens, and AI keys.
+   It is encrypted at rest with `WF_SECRET_KEY`.
+3. `WF_SECRET_KEY` itself — without it, `secrets.json` cannot be decrypted.
+
+The in-app database backup (Settings → Data) and the
+`POST /utilities/database/backup` endpoint capture **only the database**.
+Restoring a database backup alone will restore your portfolio but **lose stored
+secrets** (you'll need to re-enter API keys and re-connect brokers). For a full
+backup, snapshot the entire `/data` volume and keep `WF_SECRET_KEY` somewhere
+safe.
+
 ### Ports
 
 - `8088` - HTTP server (serves both API and static frontend)

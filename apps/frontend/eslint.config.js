@@ -26,4 +26,25 @@ export default [
     includeReactRefresh: true,
     tsconfigPath: ["./tsconfig.json", "./tsconfig.node.json"],
   }),
+
+  // Keep the web and shared adapters platform-neutral: Tauri APIs are
+  // desktop-only and must never be statically imported here, or they would be
+  // pulled into the web bundle. Desktop code belongs in src/adapters/tauri/**.
+  {
+    files: ["src/adapters/shared/**/*.{ts,tsx}", "src/adapters/web/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@tauri-apps/*", "tauri-plugin-*"],
+              message:
+                "Tauri APIs are desktop-only and would ship in the web bundle. Put desktop code in src/adapters/tauri/** instead.",
+            },
+          ],
+        },
+      ],
+    },
+  },
 ];
