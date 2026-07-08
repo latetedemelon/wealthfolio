@@ -191,6 +191,23 @@ impl<E: AiEnvironment + 'static> ChatService<E> {
         repo.update_thread(updated).await
     }
 
+    /// Add a tag to a thread in the repository (idempotent).
+    pub async fn add_tag(&self, thread_id: &str, tag: &str) -> Result<(), AiError> {
+        let repo = self.env.chat_repository();
+        // Validate the thread exists so callers get a clean not-found.
+        repo.get_thread(thread_id)?
+            .ok_or_else(|| AiError::ThreadNotFound(thread_id.to_string()))?;
+        repo.add_tag(thread_id, tag).await
+    }
+
+    /// Remove a tag from a thread in the repository (idempotent).
+    pub async fn remove_tag(&self, thread_id: &str, tag: &str) -> Result<(), AiError> {
+        let repo = self.env.chat_repository();
+        repo.get_thread(thread_id)?
+            .ok_or_else(|| AiError::ThreadNotFound(thread_id.to_string()))?;
+        repo.remove_tag(thread_id, tag).await
+    }
+
     /// Delete a thread and its messages from the repository.
     pub async fn delete_thread(&self, thread_id: &str) -> Result<(), AiError> {
         self.env.chat_repository().delete_thread(thread_id).await?;

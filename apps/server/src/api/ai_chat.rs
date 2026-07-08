@@ -226,11 +226,15 @@ async fn delete_thread(
 ///
 /// Add a tag to a thread.
 async fn add_tag(
-    State(_state): State<Arc<AppState>>,
-    Path(_thread_id): Path<String>,
-    Json(_request): Json<TagRequest>,
+    State(state): State<Arc<AppState>>,
+    Path(thread_id): Path<String>,
+    Json(request): Json<TagRequest>,
 ) -> Result<StatusCode, AiChatError> {
-    // TODO: Add tag support to ChatService
+    state
+        .ai_chat_service
+        .add_tag(&thread_id, &request.tag)
+        .await
+        .map_err(AiChatError::Ai)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -238,10 +242,14 @@ async fn add_tag(
 ///
 /// Remove a tag from a thread.
 async fn remove_tag(
-    State(_state): State<Arc<AppState>>,
-    Path((_thread_id, _tag)): Path<(String, String)>,
+    State(state): State<Arc<AppState>>,
+    Path((thread_id, tag)): Path<(String, String)>,
 ) -> Result<StatusCode, AiChatError> {
-    // TODO: Add tag support to ChatService
+    state
+        .ai_chat_service
+        .remove_tag(&thread_id, &tag)
+        .await
+        .map_err(AiChatError::Ai)?;
     Ok(StatusCode::NO_CONTENT)
 }
 

@@ -1,3 +1,14 @@
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@wealthfolio/ui/components/ui/alert-dialog";
 import { Button } from "@wealthfolio/ui/components/ui/button";
 import {
   Card,
@@ -19,6 +30,7 @@ export const BackupRestoreForm = () => {
   const {
     performBackup,
     performRestore,
+    performWebRestore,
     deleteWebBackup,
     getWebBackupDownloadUrl,
     isBackingUp,
@@ -57,6 +69,9 @@ export const BackupRestoreForm = () => {
       isDeletingBackup={isDeletingWebBackup}
       backupListError={webBackupsError}
       onDeleteBackup={deleteWebBackup}
+      onRestoreBackup={performWebRestore}
+      canRestore={canRestore}
+      isRestoring={isRestoring}
       getDownloadUrl={getWebBackupDownloadUrl}
     />
   );
@@ -140,6 +155,9 @@ interface WebPanelProps {
   isDeletingBackup: boolean;
   backupListError: string | null;
   onDeleteBackup: (filename: string) => Promise<void>;
+  onRestoreBackup: (filename: string) => Promise<void>;
+  canRestore: boolean;
+  isRestoring: boolean;
   getDownloadUrl: (filename: string) => string;
 }
 
@@ -174,6 +192,9 @@ const WebBackupPanel = ({
   isDeletingBackup,
   backupListError,
   onDeleteBackup,
+  onRestoreBackup,
+  canRestore,
+  isRestoring,
   getDownloadUrl,
 }: WebPanelProps) => {
   const { t } = useTranslation();
@@ -252,6 +273,53 @@ const WebBackupPanel = ({
                     </p>
                   </div>
                   <div className="flex items-center gap-1">
+                    {canRestore && (
+                      <AlertDialog>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                disabled={isRestoring}
+                                className="h-8 w-8"
+                              >
+                                <Icons.Import className="h-4 w-4" />
+                                <span className="sr-only">
+                                  {t("settings:backup_restore_item", {
+                                    filename: backup.filename,
+                                  })}
+                                </span>
+                              </Button>
+                            </AlertDialogTrigger>
+                          </TooltipTrigger>
+                          <TooltipContent>{t("settings:backup_restore_button")}</TooltipContent>
+                        </Tooltip>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>
+                              {t("settings:backup_restore_title")}
+                            </AlertDialogTitle>
+                            <AlertDialogDescription className="space-y-2">
+                              <Trans
+                                i18nKey="settings:backup_web_restore_confirm"
+                                values={{ filename: backup.filename }}
+                                components={{ fn: <span className="break-all font-medium" /> }}
+                              />
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>{t("common:cancel")}</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => void onRestoreBackup(backup.filename)}
+                              disabled={isRestoring}
+                            >
+                              {t("settings:backup_restore_button")}
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    )}
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button asChild size="icon" variant="ghost" className="h-8 w-8">

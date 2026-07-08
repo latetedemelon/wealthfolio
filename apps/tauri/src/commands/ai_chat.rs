@@ -147,22 +147,24 @@ pub async fn delete_ai_thread(
 /// Add a tag to a thread.
 #[tauri::command]
 pub async fn add_ai_thread_tag(
-    _context: State<'_, Arc<ServiceContext>>,
-    _thread_id: String,
-    _tag: String,
+    context: State<'_, Arc<ServiceContext>>,
+    thread_id: String,
+    tag: String,
 ) -> CommandResult<()> {
-    // TODO: Add tag support to ChatService
+    let service = context.ai_chat_service();
+    service.add_tag(&thread_id, &tag).await?;
     Ok(())
 }
 
 /// Remove a tag from a thread.
 #[tauri::command]
 pub async fn remove_ai_thread_tag(
-    _context: State<'_, Arc<ServiceContext>>,
-    _thread_id: String,
-    _tag: String,
+    context: State<'_, Arc<ServiceContext>>,
+    thread_id: String,
+    tag: String,
 ) -> CommandResult<()> {
-    // TODO: Add tag support to ChatService
+    let service = context.ai_chat_service();
+    service.remove_tag(&thread_id, &tag).await?;
     Ok(())
 }
 
